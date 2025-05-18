@@ -5,95 +5,88 @@ const tileSize = 32;
 const cols = 10;
 const rows = 10;
 
-let owl = { x: 1, y: 1 };
-let bombs = [];
-let explosions = [];
-let worms = [];
-let mice = [];
-
 const owlImg = new Image();
 owlImg.src = "owl.png";
-const wormImg = new Image();
-wormImg.src = "worm.png";
-const mouseImg = new Image();
-mouseImg.src = "mouse.png";
+const wallImg = new Image();
+wallImg.src = "wall.png";
+const blockImg = new Image();
+blockImg.src = "block.png";
 const explosionImg = new Image();
 explosionImg.src = "explosion.png";
 
-function getRandomTile(exclude) {
-  let x, y, isOccupied;
-  do {
-    x = Math.floor(Math.random() * cols);
-    y = Math.floor(Math.random() * rows);
-    isOccupied = exclude.some(e => e.x === x && e.y === y);
-  } while (isOccupied);
-  return { x, y };
-}
+let grid = [];
+let owl = { x: 1, y: 1 };
+let bombs = [];
+let explosions = [];
 
-function spawnEnemies() {
-  worms = [];
-  mice = [];
-  let occupied = [{ ...owl }];
-
-  for (let i = 0; i < 3; i++) {
-    let pos = getRandomTile(occupied);
-    worms.push(pos);
-    occupied.push(pos);
-  }
-
-  for (let i = 0; i < 2; i++) {
-    let pos = getRandomTile(occupied);
-    mice.push(pos);
-    occupied.push(pos);
+function initGrid() {
+  for (let y = 0; y < rows; y++) {
+    grid[y] = [];
+    for (let x = 0; x < cols; x++) {
+      if (x % 2 === 1 && y % 2 === 1) {
+        grid[y][x] = 1;
+      } else if (Math.random() < 0.3 && !(x === 1 && y === 1)) {
+        grid[y][x] = 2;
+      } else {
+        grid[y][x] = 0;
+      }
+    }
   }
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
+      if (grid[y][x] === 1) ctx.drawImage(wallImg, x * tileSize, y * tileSize, tileSize, tileSize);
+      if (grid[y][x] === 2) ctx.drawImage(blockImg, x * tileSize, y * tileSize, tileSize, tileSize);
       ctx.strokeStyle = "#333";
       ctx.strokeRect(x * tileSize, y * tileSize, tileSize, tileSize);
     }
   }
 
   ctx.drawImage(owlImg, owl.x * tileSize, owl.y * tileSize, tileSize, tileSize);
-  worms.forEach(w => ctx.drawImage(wormImg, w.x * tileSize, w.y * tileSize, tileSize, tileSize));
-  mice.forEach(m => ctx.drawImage(mouseImg, m.x * tileSize, m.y * tileSize, tileSize, tileSize));
-  bombs.forEach(b => ctx.fillStyle = "#f00", ctx.fillRect(b.x * tileSize + 8, b.y * tileSize + 8, 16, 16));
-  explosions.forEach(e => ctx.drawImage(explosionImg, e.x * tileSize, e.y * tileSize, tileSize, tileSize));
+
+  bombs.forEach(b => {
+    ctx.fillStyle = "#f00";
+    ctx.beginPath();
+    ctx.arc(b.x * tileSize + tileSize/2, b.y * tileSize + tileSize/2, 8, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  explosions.forEach(e => {
+    ctx.drawImage(explosionImg, e.x * tileSize, e.y * tileSize, tileSize, tileSize);
+  });
 }
 
-function move(dir) {
-  if (dir === "ArrowUp" && owl.y > 0) owl.y--;
-  if (dir === "ArrowDown" && owl.y < rows - 1) owl.y++;
-  if (dir === "ArrowLeft" && owl.x > 0) owl.x--;
-  if (dir === "ArrowRight" && owl.x < cols - 1) owl.x++;
+function move(dx, dy) {
+  let nx = owl.x + dx;
+  let ny = owl.y + dy;
+  if (nx >= 0 && ny >= 0 && nx < cols && ny < rows && grid[ny][nx] === 0) {
+    owl.x = nx;
+    owl.y = ny;
+  }
   draw();
 }
 
 function placeBomb() {
-  let bomb = { x: owl.x, y: owl.y };
-  bombs.push(bomb);
-  draw();
+  const x = owl.x;
+  const y = owl.y;
+  bombs.push({ x, y });
   setTimeout(() => {
-    bombs = bombs.filter(b => !(b.x === bomb.x && b.y === bomb.y));
-    createExplosion(bomb.x, bomb.y);
+    bombs = bombs.filter(b => b.x !== x || b.y !== y);
+    explode(x, y);
   }, 1500);
 }
 
-function createExplosion(x, y) {
-  const explosionTiles = [
-    { x, y },
-    { x: x + 1, y },
-    { x: x - 1, y },
-    { x, y: y + 1 },
-    { x, y: y - 1 },
-  ];
-  explosions = explosionTiles;
-  worms = worms.filter(w => !explosionTiles.some(e => e.x === w.x && e.y === w.y));
-  mice = mice.filter(m => !explosionTiles.some(e => e.x === m.x && e.y === m.y));
+function explode(x, y) {
+  const tiles = [{x,y}, {x:x+1,y}, {x:x-1,y}, {x,y:y+1}, {x,y:y-1}];
+  tiles.forEach(t => {
+    if (t.x >= 0 && t.y >= 0 && t.x < cols && t.y < rows) {
+      if (grid[t.y][t.x] === 2) grid[t.y][t.x] = 0;
+      explosions.push(t);
+    }
+  });
   draw();
   setTimeout(() => {
     explosions = [];
@@ -101,16 +94,15 @@ function createExplosion(x, y) {
   }, 500);
 }
 
-document.addEventListener("keydown", (e) => {
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-    move(e.key);
-  }
-  if (e.key === " ") {
-    placeBomb();
-  }
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowUp") move(0, -1);
+  if (e.key === "ArrowDown") move(0, 1);
+  if (e.key === "ArrowLeft") move(-1, 0);
+  if (e.key === "ArrowRight") move(1, 0);
+  if (e.key === " ") placeBomb();
 });
 
 owlImg.onload = () => {
-  spawnEnemies();
+  initGrid();
   draw();
 };
